@@ -56,12 +56,3 @@ Run the Next.js server and the backend services to start the agent. You can then
 
 -----
 
-## 🤝 Contributing
-
-We welcome contributions from linguists, AI researchers, and developers. Please read our [CONTRIBUTING.md](https://www.google.com/search?q=https://github.com/saadsalmanakram/OmniLingua-Agent/blob/main/CONTRIBUTING.md) for details on submitting pull requests.
-
------
-
-## 📄 License
-
-This project is licensed under the MIT License - see the [LICENSE](https://www.google.com/search?q=https://github.com/saadsalmanakram/OmniLingua-Agent/blob/main/LICENSE) file for details.
