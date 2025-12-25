@@ -27,7 +27,7 @@ Building on the OmniLingua-SEA project, this is an advanced agent that not only 
 * **Communication:** tRPC
 * **Core Generation Model:** Massive multimodal model
 * **Embeddings:** [Sentence-Transformers](https://www.sbert.net/)
-* **Contextual Retrieval:** Vector database
+* **Contextual Retrieval:** ChromaDB
 
 -----
 
@@ -63,3 +63,51 @@ Run the Next.js server and the backend services to start the agent. You can then
 
 -----
 
+Here is the comprehensive final file structure for **OmniLingua-Agent**. This structure integrates the **Next.js** frontend, **Express** backend, **Python AI Engine**, and **Docker** configurations we've built.
+
+```text
+OmniLingua-Agent/
+├── apps/
+│   ├── web/                         # Frontend (Next.js + Tailwind)
+│   │   ├── components/
+│   │   │   └── EmotionDashboard.tsx # UI for Vision/Emotion analysis
+│   │   ├── pages/
+│   │   │   ├── _app.tsx             # tRPC Provider wrapping
+│   │   │   └── index.tsx            # Main Landing Page
+│   │   ├── utils/
+│   │   │   └── trpc.ts              # tRPC Frontend Client logic
+│   │   ├── public/                  # Static assets (logos, icons)
+│   │   ├── Dockerfile               # Frontend Containerization
+│   │   ├── next.config.js
+│   │   ├── tailwind.config.js
+│   │   └── package.json
+│   │
+│   └── server/                      # Backend (Node.js + Express)
+│       ├── src/
+│       │   ├── router.ts            # tRPC Router (Business Logic)
+│       │   └── server.ts            # Express Entry point
+│       ├── Dockerfile               # Backend Containerization
+│       ├── tsconfig.json
+│       └── package.json
+│
+├── packages/
+│   ├── ai-engine/                   # AI Layer (Python + FastAPI)
+│   │   ├── agent.py                 # Cultural Context & RAG logic
+│   │   ├── main.py                  # FastAPI Wrapper
+│   │   ├── chroma_db/               # Local Vector Database storage
+│   │   ├── Dockerfile               # AI Engine Containerization
+│   │   └── requirements.txt         # Python dependencies
+│   │
+│   └── database/                    # Shared Data Layer
+│       └── models/
+│           └── Interaction.ts       # Mongoose (MongoDB) Schema
+│
+├── .env                             # Environment Variables
+├── .gitignore                       # Git exclusion rules
+├── docker-compose.yml               # Multi-container orchestration
+├── package.json                     # Root workspace configuration
+└── README.md                        # Project documentation
+
+```
+
+----
