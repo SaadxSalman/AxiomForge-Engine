@@ -16,18 +16,41 @@ Building on the OmniLingua-SEA project, this is an advanced agent that not only 
 
 ## 🛠️ Tech Stack
 
-* **MERN Stack (Extended):**
-    * **M**ongoDB: For persistent data storage.
-    * **E**xpress.js: Powering backend API services.
-    * **R**eact: Integrated via **Next.js** for high-performance UI.
-    * **N**ode.js: The runtime environment for the application.
-* **Frontend Enhancements:**
-    * **TypeScript:** For robust, type-safe development.
-    * **Tailwind CSS:** For modern, utility-first styling.
-* **Communication:** tRPC
-* **Core Generation Model:** Massive multimodal model
-* **Embeddings:** [Sentence-Transformers](https://www.sbert.net/)
-* **Contextual Retrieval:** ChromaDB
+#### 1. Frontend (The Experience Layer)
+
+* **Next.js (React):** The foundation for a fast, SEO-friendly, and responsive user interface.
+* **tRPC (Client):** Provides end-to-end type safety. It allows the frontend to call backend functions with full TypeScript autocomplete, ensuring you never send the wrong data to your agent.
+* **Tailwind CSS:** For rapid, utility-first UI development (used for the Emotion Dashboard and layout).
+* **Lucide React:** For the iconography in the analysis dashboards.
+
+#### 2. Backend (The Orchestration Layer)
+
+* **Node.js & Express:** The primary web server that manages user sessions, authentication, and coordinates between the frontend and the AI services.
+* **tRPC (Server):** Handles the API contract between the Next.js app and the server logic.
+* **Axios:** Used as the bridge to send requests from the Node.js server to the Python FastAPI service.
+
+#### 3. AI & Data Layer (The Intelligence Layer)
+
+* **Python 3.10+:** The industry standard for AI and Machine Learning.
+* **FastAPI:** A high-performance Python web framework used to expose your AI models as an internal microservice.
+* **Sentence-Transformers:** The core engine for "Advanced Cross-Lingual Understanding," generating vector embeddings for text in dozens of languages.
+* **ChromaDB:** A specialized vector database (VectorDB) used for **Contextual Retrieval (RAG)**. It stores cultural nuances and norms.
+* **MongoDB:** Used for persistent storage of "Interactions" (the MERN core), keeping a record of all generated content and metadata.
+
+#### 4. DevOps & Infrastructure (The Deployment Layer)
+
+* **Docker & Docker Compose:** Containerizes the entire stack so that MongoDB, ChromaDB, the Python Engine, and the Web App all run in a unified environment with one command.
+* **TypeScript:** Used across the entire JavaScript/Node.js stack to catch errors during development.
+
+---
+
+### 🔄 Data Flow Summary
+
+1. **User** uploads a video/text via the **Next.js** frontend.
+2. **Next.js** sends a request via **tRPC** to the **Express** backend.
+3. **Express** saves the raw data in **MongoDB** and forwards the task to **FastAPI (Python)**.
+4. **Python** processes the input using **Sentence-Transformers**, pulls context from **ChromaDB**, and generates the final output.
+5. **Express** receives the AI response, updates **MongoDB**, and sends the result back to the user's dashboard.
 
 -----
 
