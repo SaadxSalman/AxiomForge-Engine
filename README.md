@@ -14,13 +14,20 @@ Building on the OmniLingua-SEA project, this is an advanced agent that not only 
 
 -----
 
-## ⚙️ Tech Stack
+## 🛠️ Tech Stack
 
-  * **Frontend:** [Next.js](https://nextjs.org/)
-  * **Communication:** tRPC
-  * **Core Generation Model:** Massive multimodal model
-  * **Embeddings:** [Sentence-Transformers](https://www.sbert.net/)
-  * **Contextual Retrieval:** Vector database
+* **MERN Stack (Extended):**
+    * **M**ongoDB: For persistent data storage.
+    * **E**xpress.js: Powering backend API services.
+    * **R**eact: Integrated via **Next.js** for high-performance UI.
+    * **N**ode.js: The runtime environment for the application.
+* **Frontend Enhancements:**
+    * **TypeScript:** For robust, type-safe development.
+    * **Tailwind CSS:** For modern, utility-first styling.
+* **Communication:** tRPC
+* **Core Generation Model:** Massive multimodal model
+* **Embeddings:** [Sentence-Transformers](https://www.sbert.net/)
+* **Contextual Retrieval:** Vector database
 
 -----
 
