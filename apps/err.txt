@@ -1,0 +1,50 @@
+C:\Python314\Lib\site-packages\langsmith\_internal\_beta_decorator.py:70: DeprecationWarning: 'asyncio.iscoroutinefunction' is deprecated and slated for removal in Python 3.16; use inspect.iscoroutinefunction() instead
+  if asyncio.iscoroutinefunction(func):
+C:\Python314\Lib\site-packages\fastapi\routing.py:233: DeprecationWarning: 'asyncio.iscoroutinefunction' is deprecated and slated for removal in Python 3.16; use inspect.iscoroutinefunction() instead
+  is_coroutine = asyncio.iscoroutinefunction(dependant.call)
+C:\Python314\Lib\site-packages\starlette\_utils.py:39: DeprecationWarning: 'asyncio.iscoroutinefunction' is deprecated and slated for removal in Python 3.16; use inspect.iscoroutinefunction() instead
+  return asyncio.iscoroutinefunction(obj) or (callable(obj) and asyncio.iscoroutinefunction(obj.__call__))
+Traceback (most recent call last):
+  File "<string>", line 1, in <module>
+    from app.api.lore import router
+  File "S:\My Data\Github\AxiomForge-Engine\apps\server\app\api\__init__.py", line 10, in <module>
+    from app.api.lore import router as lore_router
+  File "S:\My Data\Github\AxiomForge-Engine\apps\server\app\api\lore.py", line 57, in <module>
+    @router.post("/plan", response_model=dict[str, Any], summary="Plan lore expansion")
+     ~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Python314\Lib\site-packages\fastapi\routing.py", line 994, in decorator
+    self.add_api_route(
+    ~~~~~~~~~~~~~~~~~~^
+        path,
+        ^^^^^
+    ...<23 lines>...
+        generate_unique_id_function=generate_unique_id_function,
+        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    )
+    ^
+  File "C:\Python314\Lib\site-packages\fastapi\routing.py", line 933, in add_api_route
+    route = route_class(
+        self.prefix + path,
+    ...<24 lines>...
+        generate_unique_id_function=current_generate_unique_id,
+    )
+  File "C:\Python314\Lib\site-packages\fastapi\routing.py", line 554, in __init__
+    self.dependant = get_dependant(path=self.path_format, call=self.endpoint)
+                     ~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Python314\Lib\site-packages\fastapi\dependencies\utils.py", line 285, in get_dependant
+    param_details = analyze_param(
+        param_name=param_name,
+    ...<2 lines>...
+        is_path_param=is_path_param,
+    )
+  File "C:\Python314\Lib\site-packages\fastapi\dependencies\utils.py", line 488, in analyze_param
+    field = create_model_field(
+        name=param_name,
+    ...<4 lines>...
+        field_info=field_info,
+    )
+  File "C:\Python314\Lib\site-packages\fastapi\utils.py", line 98, in create_model_field
+    raise fastapi.exceptions.FastAPIError(
+    ...<7 lines>...
+    ) from None
+fastapi.exceptions.FastAPIError: Invalid args for response field! Hint: check that fastapi.background.BackgroundTasks | None is a valid Pydantic field type. If you are using a return type annotation that is not a valid Pydantic field (e.g. Union[Response, dict, None]) you can disable generating the response model from the type annotation with the path operation decorator parameter response_model=None. Read more: https://fastapi.tiangolo.com/tutorial/response-model/
