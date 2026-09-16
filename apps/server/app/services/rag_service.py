@@ -20,7 +20,7 @@ from typing import Any
 from sqlalchemy.orm import Session
 
 from app.config import settings
-from app.database import get_neo4j_driver, get_weaviate_client
+from app.database import WEAVIATE_LORE_CLASS, get_neo4j_driver, get_weaviate_client
 from app.models.models import ChunkKind, Scope
 
 logger = logging.getLogger(__name__)
@@ -53,6 +53,16 @@ class HybridRetrievalService:
     def __init__(self) -> None:
         self.weaviate = get_weaviate_client()
 
+    def _get_collection(self) -> Any:
+        """Return the Weaviate ``AxiomLoreChunk`` collection, or ``None``."""
+        if self.weaviate is None:
+            return None
+        try:
+            return self.weaviate.collections.get(WEAVIATE_LORE_CLASS)
+        except Exception as e:  # noqa: BLE001
+            logger.debug("Weaviate collection fetch failed (%s)", e)
+            return None
+
     def ingest_chunk(
         self,
         source_id: str,
@@ -78,8 +88,9 @@ class HybridRetrievalService:
             "tags": tags,
         }
         try:
-            if self.weaviate is not None:
-                self.weaviate.data_object.create(class_name="AxiomLoreChunk", data_object=obj, vector=vec)
+            coll = self._get_collection()
+            if coll is not None:
+                coll.data.insert(properties=obj, vector=vec)
         except Exception as e:  # noqa: BLE001
             logger.warning("Weaviate ingest failed (%s); will rely on pgvector fallback", e)
 
@@ -141,36 +152,38 @@ class HybridRetrievalService:
     ) -> list[dict[str, Any]]:
         vec = _embed(query_text)
 
-        # --- 1. Weaviate (dense vector + optional property filters) ---
+        # --- 1. Weaviate (dense vector + optional property filters, v4 API) ---
         weaviate_results: list[dict[str, Any]] = []
         try:
-            if self.weaviate is not None:
-                operands: list[dict[str, Any]] = []
+            coll = self._get_collection()
+            if coll is not None:
+                from weaviate.classes.query import Filter
+
+                filters: Any = None
                 if kind:
-                    operands.append({"path": ["kind"], "operator": "Equal", "valueString": kind.value})
+                    filters = Filter.by_property("kind").equals(kind.value)
                 if scope:
-                    operands.append({"path": ["scope"], "operator": "Equal", "valueString": scope.value})
-                response = self.weaviate.query.get(
-                    "AxiomLoreChunk",
-                    ["source_id", "chunkIndex", "text", "kind", "scope", "tags"],
+                    scope_filter = Filter.by_property("scope").equals(scope.value)
+                    filters = scope_filter if filters is None else filters & scope_filter
+                res = coll.query.near_vector(
+                    near_vector=vec,
                     limit=top_k,
-                    where={"operator": "And", "operands": operands} if operands else None,
-                    vector=vec,
+                    filters=filters,
+                    return_properties=["source_id", "chunkIndex", "text", "kind", "scope", "tags"],
                 )
-                if isinstance(response, dict) and "data" in response:
-                    objects = response["data"].get("Get", {}).get("AxiomLoreChunk", [])
-                    for obj in objects:
-                        weaviate_results.append(
-                            {
-                                "source_id": obj.get("source_id"),
-                                "chunk_index": obj.get("chunkIndex"),
-                                "text": obj.get("text"),
-                                "kind": obj.get("kind"),
-                                "scope": obj.get("scope"),
-                                "tags": obj.get("tags", []),
-                                "source": "weaviate",
-                            }
-                        )
+                for obj in res.objects or []:
+                    p = obj.properties
+                    weaviate_results.append(
+                        {
+                            "source_id": p.get("source_id"),
+                            "chunk_index": p.get("chunkIndex"),
+                            "text": p.get("text"),
+                            "kind": p.get("kind"),
+                            "scope": p.get("scope"),
+                            "tags": p.get("tags", []),
+                            "source": "weaviate",
+                        }
+                    )
         except Exception as e:  # noqa: BLE001
             logger.debug("Weaviate query failed (%s); relying on pgvector", e)
 

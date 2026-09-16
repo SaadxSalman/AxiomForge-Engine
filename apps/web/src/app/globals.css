@@ -1,0 +1,57 @@
+/*
+ * Global stylesheet for the AxiomForge-Engine dashboard.
+ *
+ * Tailwind CSS v4 is CSS-first: design tokens are declared in the `@theme`
+ * block below and are then available as utilities (e.g. `bg-background`).
+ */
+@import "tailwindcss";
+
+@theme {
+  /* Core palette */
+  --color-background: hsl(224 71% 4%);
+  --color-surface: hsl(223 47% 11%);
+  --color-border: hsl(214 32% 20%);
+  --color-foreground: hsl(0 0% 92%);
+  --color-muted-foreground: hsl(215 20% 65%);
+
+  /* Brand accents */
+  --color-primary: hsl(258 90% 65%);
+  --color-primary-foreground: hsl(0 0% 100%);
+  --color-accent: hsl(38 92% 58%);
+  --color-accent-foreground: hsl(224 71% 5%);
+  --color-secondary: hsl(223 40% 18%);
+  --color-secondary-foreground: hsl(0 0% 100%);
+  --color-destructive: hsl(0 72% 51%);
+  --color-destructive-foreground: hsl(0 0% 100%);
+
+  /* Radii + fonts */
+  --radius: 0.6rem;
+  --font-sans: Inter, ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  --font-mono: "Fira Code", ui-monospace, SFMono-Regular, Menlo, monospace;
+}
+
+@layer base {
+  html,
+  body {
+    margin: 0;
+    padding: 0;
+    background-color: var(--color-background);
+    color: var(--color-foreground);
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+  }
+
+  * {
+    border-color: var(--color-border);
+  }
+}
+
+@layer components {
+  /* Frosted-glass panel used throughout the dashboard. */
+  .glass {
+    background-color: color-mix(in oklab, var(--color-surface) 65%, transparent);
+    backdrop-filter: blur(16px);
+    border: 1px solid var(--color-border);
+    border-radius: var(--radius);
+  }
+}

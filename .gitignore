@@ -1,2 +1,137 @@
-node_modules/
+# =============================================================================
+# AxiomForge-Engine — .gitignore
+# =============================================================================
+# Secrets & local environment (never commit these)
+# -----------------------------------------------------------------------------
 .env
+.env.*
+*.pem
+*.key
+secrets/
+credentials.json
+
+# -----------------------------------------------------------------------------
+# Python
+# -----------------------------------------------------------------------------
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+build/
+dist/
+downloads/
+eggs/
+.eggs/
+*.egg-info/
+.installed.cfg
+*.egg
+MANIFEST
+
+# Virtual environments
+.venv/
+venv/
+ENV/
+env/
+.python-version
+
+# Python tooling caches
+.pytest_cache/
+.mypy_cache/
+.dmypy.json
+.ruff_cache/
+.coverage
+.coverage.*
+htmlcov/
+.tox/
+.nox/
+.hypothesis/
+celerybeat-schedule
+celerybeat.pid
+
+# -----------------------------------------------------------------------------
+# Node / Next.js / frontend
+# -----------------------------------------------------------------------------
+node_modules/
+node_modules
+*/node_modules/
+**/node_modules/
+
+# Next.js build output
+.next/
+out/
+.turbo/
+.swc/
+next-env.d.ts
+
+# Bundler caches
+.eslintcache
+*.tsbuildinfo
+.parcel-cache/
+
+# Frontend env overrides
+.env.local
+.env.development.local
+.env.test.local
+.env.production.local
+
+# -----------------------------------------------------------------------------
+# Docker local runtime data (bind mounts created by docker-compose)
+# -----------------------------------------------------------------------------
+docker/data/
+docker/postgres-data/
+docker/neo4j-data/
+docker/neo4j-logs/
+docker/neo4j-import/
+docker/redis-data/
+docker/weaviate-data/
+docker/volumes/
+data/
+pgdata/
+neo4j/
+weaviate_data/
+
+# -----------------------------------------------------------------------------
+# Model / embedding caches
+# -----------------------------------------------------------------------------
+.cache/
+.huggingface/
+.models/
+models/
+chroma_db/
+.chroma/
+
+# -----------------------------------------------------------------------------
+# Logs & temp
+# -----------------------------------------------------------------------------
+*.log
+logs/
+*.pid
+*.seed
+tmp/
+temp/
+.cache/
+_scratch/
+err.txt
+
+# -----------------------------------------------------------------------------
+# Editors & OS
+# -----------------------------------------------------------------------------
+.vscode/
+!.vscode/extensions.json
+.idea/
+*.swp
+*.swo
+*~
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# -----------------------------------------------------------------------------
+# Misc project scratch files
+# -----------------------------------------------------------------------------
+dependencies.json
+_gen.ps1
+_build.py
+sync_from_C.py
+_src/

@@ -7,9 +7,9 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
 class Settings(BaseSettings):
-    model_config = SettingsConfigDict(env_file=".env", env_file_encoding="utf-8", case_sensitive=False, extra="ignore")
-    app_name: str = "AxiomForge-Engine"
-    env: Literal["development", "staging", "production"] = "development"
+    model_config = SettingsConfigDict(env_file=(".env", "../.env", "../../.env"), env_file_encoding="utf-8", case_sensitive=False, extra="ignore")
+    app_name: str = Field(default="AxiomForge-Engine", alias="axiom_app_name")
+    env: Literal["development", "staging", "production"] = Field(default="development", alias="axiom_env")
     debug: bool = Field(default=False, alias="axiom_debug")
     api_url: str = Field(default="http://localhost:8000", alias="axiom_api_url")
     ws_url: str = Field(default="ws://localhost:8000", alias="axiom_ws_url")

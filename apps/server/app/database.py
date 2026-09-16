@@ -70,22 +70,28 @@ _weaviate_client: Any | None = None
 
 
 def get_weaviate_client() -> Any:
-    """Return a (lazily constructed) Weaviate client.
+    """Return a lazily-constructed Weaviate v4 client.
 
-    Robust against Weaviate being unavailable: returns ``None`` instead of
-    raising so that the rest of the system can gracefully fall back to
-    pgvector-only retrieval.
+    Weaviate is an *optional* secondary vector store.  When it is unreachable
+    or misconfigured this returns ``None`` so the hybrid retriever can fall
+    back to pgvector without crashing the import or request cycle.
     """
     global _weaviate_client
     if _weaviate_client is None:
         try:
             auth_config: Any = None
             if settings.weaviate_api_key and not str(settings.weaviate_api_key).startswith("change-me"):
-                # weaviate-client v4 uses ``AuthApiKey``; ``ApiKey`` was removed.
+                # weaviate-client v4 uses ``AuthApiKey`` (``ApiKey`` was removed).
                 auth_config = weaviate.auth.AuthApiKey(api_key=settings.weaviate_api_key)
-            _weaviate_client = weaviate.Client(
+            params = weaviate.connect.base.ConnectionParams.from_url(
                 settings.weaviate_url,
+                grpc_port=50051,
+                grpc_secure=settings.weaviate_url.startswith("https"),
+            )
+            _weaviate_client = weaviate.WeaviateClient(
+                connection_params=params,
                 auth_client_secret=auth_config,
+                skip_init_checks=True,
             )
         except Exception as e:  # noqa: BLE001
             logger.warning("Weaviate client init failed (%s); retrieval will use pgvector fallback", e)
@@ -93,26 +99,41 @@ def get_weaviate_client() -> Any:
     return _weaviate_client
 
 
+# Name of the Weaviate collection that mirrors the ``lore_chunks`` table.
+WEAVIATE_LORE_CLASS = "AxiomLoreChunk"
+
+
 def init_vector_schema() -> None:
+    """Create the ``AxiomLoreChunk`` collection in Weaviate (v4 API) if absent.
+
+    Best-effort: every failure is logged and swallowed so application startup
+    never blocks on Weaviate.  When Weaviate is unavailable, pgvector remains
+    the always-available dense-vector store.
+    """
     client = get_weaviate_client()
-    class_config = {
-        "class": "AxiomLoreChunk",
-        "description": "Game lore and design-document chunks",
-        "vectorIndexConfig": {"skip": False, "maxConnections": 64, "ef": 128},
-        "properties": [
-            {"name": "source_id", "dataType": ["string"]},
-            {"name": "chunkIndex", "dataType": ["int"]},
-            {"name": "text", "dataType": ["text"]},
-            {"name": "kind", "dataType": ["string"]},
-            {"name": "scope", "dataType": ["string"]},
-            {"name": "tags", "dataType": ["string[]"]},
-        ],
-    }
+    if client is None:
+        return
     try:
-        client.schema.contains(class_config)
+        existing = {c.name for c in client.collections.list_all()}
+        if WEAVIATE_LORE_CLASS in existing:
+            return
+        from weaviate.classes.config import Configure, DataType, Property
+
+        client.collections.create(
+            name=WEAVIATE_LORE_CLASS,
+            description="Game lore and design-document chunks",
+            properties=[
+                Property(name="source_id", data_type=DataType.TEXT),
+                Property(name="chunkIndex", data_type=DataType.NUMBER),
+                Property(name="text", data_type=DataType.TEXT),
+                Property(name="kind", data_type=DataType.TEXT),
+                Property(name="scope", data_type=DataType.TEXT),
+                Property(name="tags", data_type=DataType.TEXT),
+            ],
+            # Manual vectors (we supply our own embeddings via ``vector=``).
+            vectorizer_config=Configure.Vectorizers.none(),
+            vector_index_config=Configure.VectorIndex.hnsw(),
+        )
+        logger.info("Created Weaviate collection %s", WEAVIATE_LORE_CLASS)
     except Exception as e:  # noqa: BLE001
-        logger.warning("Weaviate schema check failed: %s", e)
-        try:
-            client.schema.create_class(class_config)
-        except Exception as create_err:  # noqa: BLE001
-            logger.warning("Weaviate schema create failed: %s", create_err)
+        logger.warning("Weaviate schema init failed (%s); continuing with pgvector fallback", e)
