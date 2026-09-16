@@ -100,7 +100,7 @@ def plan_lore(body: PlanLoreRequest) -> dict[str, Any]:
     """Run the Autonomous Lore Keeper agent over a query (synchronous)."""
     state = LoreKeeperState(query=body.query, source_text=body.source_text)
     try:
-        final = lore_keeper_agent.invoke(state.model_dump())
+        final = lore_keeper_agent.invoke(state.model_dump(), config={"recursion_limit": 12})
     except Exception as e:  # noqa: BLE001
         logger.exception("plan_lore inline failed")
         return {
@@ -110,10 +110,14 @@ def plan_lore(body: PlanLoreRequest) -> dict[str, Any]:
             "error": str(e),
             "context_count": 0,
         }
+    from app.utils import state_to_dict
+
+    final_d = state_to_dict(final)
     return {
         "query": body.query,
-        "draft_lore": final.get("draft_lore", ""),
-        "canon_check_passed": final.get("canon_check_passed", False),
-        "context_count": len(final.get("context", [])),
-        "error": final.get("error", ""),
+        "draft_lore": final_d.get("draft_lore", ""),
+        "canon_check_passed": bool(final_d.get("canon_check_passed", False)),
+        "context_count": len(final_d.get("context", [])),
+        "sources": final_d.get("sources", []),
+        "error": final_d.get("error", ""),
     }

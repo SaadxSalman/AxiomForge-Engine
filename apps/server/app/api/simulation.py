@@ -31,16 +31,26 @@ def create_run(
         config_json=cfg.model_dump_json(),
         turn_count=0,
     )
-    db.add(run)
-    db.commit()
-    db.refresh(run)
+    try:
+        db.add(run)
+        db.commit()
+        db.refresh(run)
+    except Exception as e:  # noqa: BLE001
+        db.rollback()
+        raise HTTPException(
+            status_code=503,
+            detail=f"Database unavailable — cannot persist simulation run: {e}",
+        ) from e
     background_tasks.add_task(run_simulation_task, run_id=str(run.id), turns=cfg.turns, factions=cfg.factions)
     return SimulationRunOut.model_validate(run)
 
 
 @router.get("/runs/{run_id}", response_model=SimulationRunOut, summary="Get simulation run status")
 def get_run(run_id: int, db: Session = Depends(get_session)) -> SimulationRunOut:
-    run = db.query(SimulationRunModel).filter(SimulationRunModel.id == run_id).first()
+    try:
+        run = db.query(SimulationRunModel).filter(SimulationRunModel.id == run_id).first()
+    except Exception as e:  # noqa: BLE001
+        raise HTTPException(status_code=503, detail=f"Database unavailable: {e}") from e
     if not run:
         raise HTTPException(status_code=404, detail="Run not found")
     return SimulationRunOut.model_validate(run)
@@ -48,23 +58,29 @@ def get_run(run_id: int, db: Session = Depends(get_session)) -> SimulationRunOut
 
 @router.get("/runs/{run_id}/moves", response_model=list[SimulationMoveOut], summary="List moves for a run")
 def list_moves(run_id: int, db: Session = Depends(get_session)) -> list[SimulationMoveOut]:
-    moves = (
-        db.query(SimulationMoveModel)
-        .filter(SimulationMoveModel.run_id == run_id)
-        .order_by(SimulationMoveModel.turn)
-        .all()
-    )
+    try:
+        moves = (
+            db.query(SimulationMoveModel)
+            .filter(SimulationMoveModel.run_id == run_id)
+            .order_by(SimulationMoveModel.turn)
+            .all()
+        )
+    except Exception as e:  # noqa: BLE001
+        raise HTTPException(status_code=503, detail=f"Database unavailable: {e}") from e
     return [SimulationMoveOut.model_validate(m) for m in moves]
 
 
 @router.get("/runs/{run_id}/events", response_model=list[SimulationEventOut], summary="List events for a run")
 def list_events(run_id: int, db: Session = Depends(get_session)) -> list[SimulationEventOut]:
-    events = (
-        db.query(SimulationEventModel)
-        .filter(SimulationEventModel.run_id == run_id)
-        .order_by(SimulationEventModel.turn)
-        .all()
-    )
+    try:
+        events = (
+            db.query(SimulationEventModel)
+            .filter(SimulationEventModel.run_id == run_id)
+            .order_by(SimulationEventModel.turn)
+            .all()
+        )
+    except Exception as e:  # noqa: BLE001
+        raise HTTPException(status_code=503, detail=f"Database unavailable: {e}") from e
     return [SimulationEventOut.model_validate(e) for e in events]
 
 

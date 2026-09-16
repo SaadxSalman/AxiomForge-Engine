@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import json as _json
 import logging
+import sys
 from contextlib import asynccontextmanager
 from typing import AsyncGenerator
 
@@ -27,6 +28,16 @@ from app.agents.economy_balancer import EconomyState, economy_balancer_agent
 
 logging.basicConfig(level=settings.log_level.upper())
 log = logging.getLogger(__name__)
+
+# Windows consoles default to a legacy cp1252 codec; agent thoughts contain
+# Unicode punctuation (em-dashes, arrows) which would raise UnicodeEncodeError
+# on print/logging.  Force UTF-8 with replacement so logging can never crash
+# the request/thread that emitted it.
+for _stream in (sys.stdout, sys.stderr):
+    try:
+        _stream.reconfigure(encoding="utf-8", errors="replace")
+    except Exception:  # noqa: BLE001 - non-standard streams (IDE capture etc.)
+        pass
 
 
 @asynccontextmanager
@@ -92,7 +103,13 @@ async def agent_websocket(websocket: WebSocket, run_id: str) -> None:
                     query=msg.get("query", ""),
                     source_text=msg.get("source_text", ""),
                 )
-                async for step in agent_stream_generator(run_id, lore_keeper_agent, state.model_dump()):
+                async for step in agent_stream_generator(
+                    run_id,
+                    lore_keeper_agent,
+                    state.model_dump(),
+                    phase_keys=("context", "draft_lore", "canon_check_passed"),
+                    label="lore_keeper",
+                ):
                     await websocket.send_text(step.model_dump_json())
             elif action == "start_simulation":
                 state = SimulationState(
@@ -100,11 +117,23 @@ async def agent_websocket(websocket: WebSocket, run_id: str) -> None:
                     max_turns=int(msg.get("turns", 20)),
                     factions=msg.get("factions", {}) or {},
                 )
-                async for step in agent_stream_generator(run_id, strategy_simulator_agent, state.model_dump()):
+                async for step in agent_stream_generator(
+                    run_id,
+                    strategy_simulator_agent,
+                    state.model_dump(),
+                    phase_keys=("moves", "events", "world_state"),
+                    label="strategy_simulator",
+                ):
                     await websocket.send_text(step.model_dump_json())
             elif action == "start_economy":
                 state = EconomyState(**msg.get("metrics", {}))
-                async for step in agent_stream_generator(run_id, economy_balancer_agent, state.model_dump()):
+                async for step in agent_stream_generator(
+                    run_id,
+                    economy_balancer_agent,
+                    state.model_dump(),
+                    phase_keys=("recommendations",),
+                    label="economy_balancer",
+                ):
                     await websocket.send_text(step.model_dump_json())
             elif action == "ping":
                 await websocket.send_text(_json.dumps({"type": "pong"}))

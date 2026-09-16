@@ -1,0 +1,134 @@
+# docker-compose.yml — one-command full-stack deployment for AxiomForge-Engine.
+#
+#   docker compose up -d --build
+#
+# All credentials/knobs live in the single git-ignored `.env` at the repo root;
+# the `env_file` directive injects it into every service that needs it.
+name: axiomforge
+
+services:
+  postgres:
+    image: pgvector/pgvector:pg16
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${AXIOM_PG_USER:-axiom}
+      POSTGRES_PASSWORD: ${AXIOM_PG_PASSWORD:-axiom_dev_password}
+      POSTGRES_DB: ${AXIOM_PG_DB:-axiom}
+    ports:
+      - "${AXIOM_PG_PORT:-5432}:5432"
+    volumes:
+      - pg_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${AXIOM_PG_USER:-axiom} -d ${AXIOM_PG_DB:-axiom}"]
+      interval: 5s
+      timeout: 3s
+      retries: 12
+
+  neo4j:
+    image: neo4j:5
+    restart: unless-stopped
+    environment:
+      NEO4J_AUTH: neo4j/${AXIOM_NEO4J_PASSWORD:-axiom_dev_password}
+    ports:
+      - "7474:7474"
+      - "7687:7687"
+    volumes:
+      - neo4j_data:/data
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://localhost:7474 >/dev/null || exit 1"]
+      interval: 5s
+      timeout: 3s
+      retries: 12
+
+  weaviate:
+    image: semitechnologies/weaviate:1.25.10
+    restart: unless-stopped
+    environment:
+      QUERY_DEFAULTS_LIMIT: 25
+      AUTHENTICATION_ANONYMOUS_ACCESS_ENABLED: "true"
+      PERSISTENCE_DATA_PATH: "/var/lib/weaviate"
+      DEFAULT_VECTORIZER_MODULE: none
+      CLUSTER_HOSTNAME: node1
+    ports:
+      - "8080:8080"
+    volumes:
+      - weaviate_data:/var/lib/weaviate
+
+  redis:
+    image: redis:7-alpine
+    restart: unless-stopped
+    ports:
+      - "6379:6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 12
+
+  api:
+    build:
+      context: .
+      dockerfile: apps/server/Dockerfile
+    restart: unless-stopped
+    env_file: .env
+    environment:
+      AXIOM_PG_HOST: postgres
+      AXIOM_NEO4J_URI: bolt://neo4j:7687
+      AXIOM_WEAVIATE_URL: http://weaviate:8080
+      AXIOM_REDIS_URL: redis://redis:6379/0
+      AXIOM_CELERY_TASK_ALWAYS_EAGER: "false"
+    ports:
+      - "${AXIOM_BACKEND_PORT:-8000}:8000"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      neo4j:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+
+  worker:
+    build:
+      context: .
+      dockerfile: apps/server/Dockerfile
+    restart: unless-stopped
+    command: celery -A app.worker worker --loglevel=info --concurrency=2
+    env_file: .env
+    environment:
+      AXIOM_PG_HOST: postgres
+      AXIOM_NEO4J_URI: bolt://neo4j:7687
+      AXIOM_WEAVIATE_URL: http://weaviate:8080
+      AXIOM_REDIS_URL: redis://redis:6379/0
+    depends_on:
+      - api
+
+  flower:
+    build:
+      context: .
+      dockerfile: apps/server/Dockerfile
+    restart: unless-stopped
+    command: celery -A app.worker flower --port=5555
+    env_file: .env
+    environment:
+      AXIOM_REDIS_URL: redis://redis:6379/0
+    ports:
+      - "5555:5555"
+    depends_on:
+      - redis
+
+  web:
+    build:
+      context: .
+      dockerfile: apps/web/Dockerfile
+      args:
+        NEXT_PUBLIC_API_URL: ${AXIOM_API_URL:-http://localhost:8000}
+    restart: unless-stopped
+    ports:
+      - "${AXIOM_FRONTEND_PORT:-3000}:3000"
+    depends_on:
+      - api
+
+volumes:
+  pg_data:
+  neo4j_data:
+  weaviate_data:

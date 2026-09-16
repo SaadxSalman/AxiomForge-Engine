@@ -114,6 +114,10 @@ temp/
 _scratch/
 err.txt
 
+# One-off verification scripts & captured output
+probe*_out.txt
+build*_out.txt
+
 # -----------------------------------------------------------------------------
 # Editors & OS
 # -----------------------------------------------------------------------------

@@ -40,8 +40,15 @@ class GraphService:
             session.run("MATCH (a:Item {id: $item_id}) MATCH (b:Item {id: $depends_on_id}) MERGE (a)-[r:DEPENDS_ON]->(b) SET r.quantity = $quantity, r.updated_at = datetime()", item_id=item_id, depends_on_id=depends_on_id, quantity=quantity)
 
     def get_item_dependency_tree(self, item_id: str, depth: int = 2) -> dict[str, Any]:
+        # Neo4j does not allow parameters inside variable-length path patterns,
+        # so the (validated, bounded) depth is interpolated into the query text.
+        safe_depth = max(1, min(int(depth), 6))
         with self.driver.session(database=settings.neo4j_db) as session:
-            result = session.run("MATCH path = (root:Item {id: $item_id})-[:DEPENDS_ON*..$depth]->(leaf) RETURN nodes(path) as path", item_id=item_id, depth=depth)
+            result = session.run(
+                f"MATCH path = (root:Item {{id: $item_id}})-[:DEPENDS_ON*1..{safe_depth}]->(leaf) "
+                "RETURN nodes(path) as path",
+                item_id=item_id,
+            )
             paths = [record.data()["path"] for record in result]
             def node_map(node):
                 return {"id": node.get("id"), "name": node.get("name"), "item_type": node.get("item_type")}

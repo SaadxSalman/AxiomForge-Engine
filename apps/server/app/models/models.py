@@ -19,6 +19,7 @@ from sqlalchemy import (
     Index,
     String,
     Text,
+    UniqueConstraint,
 )
 from sqlalchemy.orm import relationship
 
@@ -70,7 +71,10 @@ class LoreChunkModel(Base):
     # that importing this module never hard-fails when pgvector is unavailable.
     embedding = Column(type_=None, nullable=True)
     created_at = Column(DateTime, default=dt.datetime.utcnow, nullable=False)
-    __table_args__ = (Index("ix_lore_chunks_embedding", "embedding", postgresql_using="hnsw"),)
+    __table_args__ = (
+        UniqueConstraint("source_id", "chunk_index", name="uq_lore_chunks_source_chunk"),
+        Index("ix_lore_chunks_embedding", "embedding", postgresql_using="hnsw"),
+    )
 
 
 def _ensure_pgvector_column() -> None:

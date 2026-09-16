@@ -28,7 +28,10 @@ class ChunkOut(ChunkBase):
 class SimulationConfig(BaseModel):
     name: str = "Sandbox Run"
     turns: int = 20
-    factions: list[dict[str, Any]] = []
+    # Accepts bare faction names (``["Iron Covenant", ...]``) or full faction
+    # dicts (``[{"id": ..., "objective": ..., ...}, ...]``).  The strategy
+    # simulator normalises either shape into its canonical mapping.
+    factions: list[str | dict[str, Any]] = []
     extra_rules: list[str] = []
 
 

@@ -15,6 +15,7 @@ from __future__ import annotations
 
 import json
 import logging
+import time as _time
 from typing import Any
 
 from sqlalchemy.orm import Session
@@ -25,26 +26,66 @@ from app.models.models import ChunkKind, Scope
 
 logger = logging.getLogger(__name__)
 
+# Circuit-breaker windows (seconds) for the *optional* retrieval backends.
+# When Postgres/Neo4j are unreachable we skip them entirely for this long
+# instead of paying a TCP connect timeout on every single query.
+_PG_RETRY_SECS = 60.0
+_NEO4J_RETRY_SECS = 60.0
+_pg_unavailable_until: float = 0.0
+_neo4j_unavailable_until: float = 0.0
+
+
+def _hash_embed(text: str, dim: int | None = None) -> list[float]:
+    """Deterministic feature-hashing embedding — no network, stable forever.
+
+    Every token is hashed (blake2b) into ``dim`` buckets with a random sign, so
+    two texts that share vocabulary land close together in cosine space.  This
+    gives genuinely useful nearest-neighbour search completely offline and is
+    100% reproducible across processes and restarts (unlike ``hash()`` which is
+    salted per interpreter session).
+    """
+    import hashlib
+    import math
+    import re as _re
+
+    dim = dim or settings.embedding_dim
+    buckets = [0.0] * dim
+    tokens = [t for t in _re.split(r"[^a-z0-9]+", text.lower()) if t]
+    if not tokens:
+        tokens = ["<empty>"]
+    for tok in tokens:
+        d = hashlib.blake2b(tok.encode("utf-8"), digest_size=16).digest()
+        sign = 1.0 if (d[8] & 1) else -1.0
+        # Two independent buckets per token for a better hash spread.
+        idx = int.from_bytes(d[:8], "big") % dim
+        buckets[idx] += sign * 1.0
+        idx2 = int.from_bytes(d[8:], "big") % dim
+        buckets[idx2] += sign * 0.5
+    norm = math.sqrt(sum(v * v for v in buckets)) or 1.0
+    return [v / norm for v in buckets]
+
 
 def _embed(text: str) -> list[float]:
     """Return a dense embedding for ``text``.
 
-    Uses OpenAI embeddings when an API key is configured; otherwise returns a
-    deterministic, normalized pseudo-vector so retrieval still works offline.
+    Uses OpenAI embeddings (via llama-index) when a real API key is configured;
+    otherwise returns the deterministic :func:`_hash_embed` fallback so the
+    hybrid retriever never hard-fails during local / offline development.
     """
     try:
         if settings.llm_api_key and not str(settings.llm_api_key).startswith("change-me"):
             from llama_index.embeddings.openai import OpenAIEmbedding
 
-            emb = OpenAIEmbedding(model=settings.embedding_model, api_key=settings.llm_api_key)
+            emb = OpenAIEmbedding(
+                model=settings.embedding_model,
+                api_key=settings.llm_api_key,
+                base_url=settings.llm_base_url if settings.llm_base_url != "https://api.openai.com/v1" else None,
+            )
             return emb.get_text_embedding(text)
     except Exception as e:  # noqa: BLE001
         logger.debug("Embedding via llama_index failed (%s); using deterministic fallback vector", e)
 
-    h = abs(hash(text)) % (10**8)
-    base = [float((h >> (i * 8)) & 0xFF) / 255.0 for i in range(settings.embedding_dim)]
-    norm = sum(v * v for v in base) ** 0.5 or 1.0
-    return [v / norm for v in base]
+    return _hash_embed(text)
 
 
 class HybridRetrievalService:
@@ -99,6 +140,14 @@ class HybridRetrievalService:
             try:
                 from app.models.models import LoreChunkModel
 
+                # Idempotent (re-)ingest: drop any previous row sharing the same
+                # (source_id, chunk_index) natural key before inserting, so that
+                # re-indexing a document never produces duplicate chunks.
+                db.query(LoreChunkModel).filter(
+                    LoreChunkModel.source_id == source_id,
+                    LoreChunkModel.chunk_index == chunk_index,
+                ).delete(synchronize_session=False)
+
                 row = LoreChunkModel(
                     source_id=source_id,
                     chunk_index=chunk_index,
@@ -150,6 +199,7 @@ class HybridRetrievalService:
         top_k: int = 8,
         db: Session | None = None,
     ) -> list[dict[str, Any]]:
+        global _pg_unavailable_until, _neo4j_unavailable_until
         vec = _embed(query_text)
 
         # --- 1. Weaviate (dense vector + optional property filters, v4 API) ---
@@ -189,33 +239,35 @@ class HybridRetrievalService:
 
         # --- 2. pgvector (local PostgreSQL fallback) ---
         pg_results: list[dict[str, Any]] = []
-        try:
-            from app.models.models import LoreChunkModel
+        if _time.time() >= _pg_unavailable_until:
+            try:
+                from app.models.models import LoreChunkModel
 
-            if db is None:
-                from app.database import SessionLocal
+                if db is None:
+                    from app.database import SessionLocal
 
-                db = SessionLocal()
-            stmt = db.query(LoreChunkModel)
-            if kind is not None:
-                stmt = stmt.filter(LoreChunkModel.kind == kind)
-            if scope is not None:
-                stmt = stmt.filter(LoreChunkModel.scope == scope)
-            rows = stmt.order_by(LoreChunkModel.embedding.l2_distance(vec)).limit(top_k).all()
-            for row in rows:
-                pg_results.append(
-                    {
-                        "source_id": row.source_id,
-                        "chunk_index": row.chunk_index,
-                        "text": row.text,
-                        "kind": row.kind.value,
-                        "scope": row.scope.value,
-                        "tags": json.loads(row.tags) if row.tags else [],
-                        "source": "pgvector",
-                    }
-                )
-        except Exception as e:  # noqa: BLE001
-            logger.debug("pgvector query failed (%s)", e)
+                    db = SessionLocal()
+                stmt = db.query(LoreChunkModel)
+                if kind is not None:
+                    stmt = stmt.filter(LoreChunkModel.kind == kind)
+                if scope is not None:
+                    stmt = stmt.filter(LoreChunkModel.scope == scope)
+                rows = stmt.order_by(LoreChunkModel.embedding.l2_distance(vec)).limit(top_k).all()
+                for row in rows:
+                    pg_results.append(
+                        {
+                            "source_id": row.source_id,
+                            "chunk_index": row.chunk_index,
+                            "text": row.text,
+                            "kind": row.kind.value,
+                            "scope": row.scope.value,
+                            "tags": json.loads(row.tags) if row.tags else [],
+                            "source": "pgvector",
+                        }
+                    )
+            except Exception as e:  # noqa: BLE001
+                _pg_unavailable_until = _time.time() + _PG_RETRY_SECS
+                logger.debug("pgvector query failed (%s); backing off %ss", e, _PG_RETRY_SECS)
 
         # --- 3. Merge, de-duplicate, enforce top_k ---
         seen: set[tuple[str, int]] = set()
@@ -230,23 +282,25 @@ class HybridRetrievalService:
                 break
 
         # --- 4. Neo4j graph-context enrichment (best-effort) ---
-        try:
-            driver = get_neo4j_driver()
-            with driver.session(database=settings.neo4j_db) as session:
-                for r in merged[:5]:
-                    rels = session.run(
-                        """
-                        MATCH (chunk:Chunk)-[:CONTAINS]-(doc:Document)
-                        WHERE doc.id = $source_id
-                        OPTIONAL MATCH (doc)-[:RELATED_TO]->(related)
-                        RETURN related
-                        """,
-                        source_id=r.get("source_id"),
-                    )
-                    related = [record["related"] for record in rels if record["related"]]
-                    r["graph_context"] = [dict(r_.items()) for r_ in related]
-        except Exception as e:  # noqa: BLE001
-            logger.debug("Neo4j graph enrichment skipped (%s)", e)
+        if merged and _time.time() >= _neo4j_unavailable_until:
+            try:
+                driver = get_neo4j_driver()
+                with driver.session(database=settings.neo4j_db) as session:
+                    for r in merged[:5]:
+                        rels = session.run(
+                            """
+                            MATCH (chunk:Chunk)-[:CONTAINS]-(doc:Document)
+                            WHERE doc.id = $source_id
+                            OPTIONAL MATCH (doc)-[:RELATED_TO]->(related)
+                            RETURN related
+                            """,
+                            source_id=r.get("source_id"),
+                        )
+                        related = [record["related"] for record in rels if record["related"]]
+                        r["graph_context"] = [dict(r_.items()) for r_ in related]
+            except Exception as e:  # noqa: BLE001
+                _neo4j_unavailable_until = _time.time() + _NEO4J_RETRY_SECS
+                logger.debug("Neo4j graph enrichment skipped (%s); backing off %ss", e, _NEO4J_RETRY_SECS)
 
         return merged
 

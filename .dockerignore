@@ -1,0 +1,4 @@
+# Local build/test artifacts
+probe*_out.txt
+build*_out.txt
+*.log

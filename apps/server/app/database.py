@@ -51,8 +51,14 @@ _neo4j_driver: Any | None = None
 def get_neo4j_driver() -> Any:
     global _neo4j_driver
     if _neo4j_driver is None:
+        # Short acquisition/connection timeouts keep graph enrichment best-effort:
+        # an unreachable Neo4j must never stall a retrieval request for ~30s.
         _neo4j_driver = GraphDatabase.driver(
-            settings.neo4j_uri, auth=(settings.neo4j_user, settings.neo4j_password)
+            settings.neo4j_uri,
+            auth=(settings.neo4j_user, settings.neo4j_password),
+            connection_timeout=2.0,
+            connection_acquisition_timeout=2.0,
+            max_connection_pool_size=5,
         )
     return _neo4j_driver
 
@@ -67,6 +73,7 @@ def neo4j_session() -> Any:
 
 
 _weaviate_client: Any | None = None
+_weaviate_checked = False  # one-time probe sentinel: don't re-pay a failed connect
 
 
 def get_weaviate_client() -> Any:
@@ -74,10 +81,14 @@ def get_weaviate_client() -> Any:
 
     Weaviate is an *optional* secondary vector store.  When it is unreachable
     or misconfigured this returns ``None`` so the hybrid retriever can fall
-    back to pgvector without crashing the import or request cycle.
+    back to pgvector without crashing the import or request cycle.  The probe
+    runs **once per process**: the ``_weaviate_checked`` sentinel distinguishes
+    "never probed" from "probed and unavailable", so an offline environment
+    pays the (short) connect timeout a single time instead of per request.
     """
-    global _weaviate_client
-    if _weaviate_client is None:
+    global _weaviate_client, _weaviate_checked
+    if not _weaviate_checked:
+        _weaviate_checked = True
         try:
             auth_config: Any = None
             if settings.weaviate_api_key and not str(settings.weaviate_api_key).startswith("change-me"):
@@ -88,13 +99,36 @@ def get_weaviate_client() -> Any:
                 grpc_port=50051,
                 grpc_secure=settings.weaviate_url.startswith("https"),
             )
-            _weaviate_client = weaviate.WeaviateClient(
-                connection_params=params,
-                auth_client_secret=auth_config,
-                skip_init_checks=True,
-            )
+            # Short timeouts so an unreachable Weaviate fails in ~2s instead of
+            # stalling every retrieval call for the default ~30s.
+            client_kwargs: dict[str, Any] = {
+                "connection_params": params,
+                "auth_client_secret": auth_config,
+                "skip_init_checks": True,
+            }
+            try:
+                client_kwargs["additional_config"] = weaviate.config.AdditionalConfig(
+                    timeout=weaviate.config.Timeout(init=2, query=2, insert=2)
+                )
+            except Exception:  # noqa: BLE001 - older client versions
+                pass
+            client = weaviate.WeaviateClient(**client_kwargs)
+            # Eagerly probe readiness: a failed connect is cached as ``None``
+            # so we never pay the connect cost again this process lifetime.
+            client.connect()
+            if client.is_ready():
+                _weaviate_client = client
+            else:
+                client.close()
+                _weaviate_client = None
+                logger.warning("Weaviate not ready at %s; retrieval will use pgvector fallback", settings.weaviate_url)
         except Exception as e:  # noqa: BLE001
             logger.warning("Weaviate client init failed (%s); retrieval will use pgvector fallback", e)
+            try:
+                if "client" in locals() and client is not None:
+                    client.close()  # avoid leaking the half-open socket
+            except Exception:  # noqa: BLE001
+                pass
             _weaviate_client = None  # type: ignore[assignment]
     return _weaviate_client
 
