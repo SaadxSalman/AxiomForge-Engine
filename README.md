@@ -746,7 +746,7 @@ The suite runs **fully offline** (no Postgres/Neo4j/Weaviate/Redis required):
 
 Distributed under the **MIT License**. See `LICENSE` for the full text.
 All demo lore (factions, regions, items) is original content created for
-this project and free to reuse..
+this project and free to reuse.
 
 
 
